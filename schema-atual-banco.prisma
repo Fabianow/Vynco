@@ -1,0 +1,91 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model account {
+  id                String  @id
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              user    @relation(fields: [userId], references: [id], onDelete: Cascade, map: "Account_userId_fkey")
+
+  @@unique([provider, providerAccountId], map: "Account_provider_providerAccountId_key")
+  @@index([userId], map: "Account_userId_fkey")
+}
+
+model empresa {
+  id                                        Int        @id @default(autoincrement())
+  nome                                      String
+  cnpj                                      String     @unique(map: "Empresa_cnpj_key")
+  responsavel                               String
+  email                                     String
+  telefone                                  String
+  categoria1                                String
+  categoria2                                String?
+  tipoOferta                                String
+  cidade                                    String
+  estado                                    String
+  porte                                     String
+  site                                      String?
+  logoUrl                                   String?
+  descricao                                 String     @db.Text
+  avaliacao                                 String     @default("Novo")
+  createdAt                                 DateTime   @default(now())
+  donoId                                    String?
+  bannerUrl                                 String?
+  user                                      user?      @relation(fields: [donoId], references: [id], map: "Empresa_donoId_fkey")
+  mensagem_mensagem_destinatarioIdToempresa mensagem[] @relation("mensagem_destinatarioIdToempresa")
+  mensagem_mensagem_remetenteIdToempresa    mensagem[] @relation("mensagem_remetenteIdToempresa")
+
+  @@index([donoId], map: "Empresa_donoId_fkey")
+}
+
+model mensagem {
+  id                                       Int      @id @default(autoincrement())
+  texto                                    String   @db.Text
+  createdAt                                DateTime @default(now())
+  remetenteId                              Int
+  destinatarioId                           Int
+  empresa_mensagem_destinatarioIdToempresa empresa  @relation("mensagem_destinatarioIdToempresa", fields: [destinatarioId], references: [id], onDelete: Cascade, map: "Mensagem_destinatarioId_fkey")
+  empresa_mensagem_remetenteIdToempresa    empresa  @relation("mensagem_remetenteIdToempresa", fields: [remetenteId], references: [id], onDelete: Cascade, map: "Mensagem_remetenteId_fkey")
+
+  @@index([destinatarioId], map: "Mensagem_destinatarioId_fkey")
+  @@index([remetenteId], map: "Mensagem_remetenteId_fkey")
+}
+
+model session {
+  id           String   @id
+  sessionToken String   @unique(map: "Session_sessionToken_key")
+  userId       String
+  expires      DateTime
+  user         user     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "Session_userId_fkey")
+
+  @@index([userId], map: "Session_userId_fkey")
+}
+
+model user {
+  id            String    @id
+  name          String?
+  email         String?   @unique(map: "User_email_key")
+  emailVerified DateTime?
+  image         String?
+  password      String?
+  account       account[]
+  empresa       empresa[]
+  session       session[]
+}
+
+

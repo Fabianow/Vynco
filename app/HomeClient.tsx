@@ -1,287 +1,703 @@
+
 "use client";
 
-import { useSession, signIn, signOut } from "next-auth/react";
+import { useMemo, useState } from "react";
+import {
+  useSession,
+  signIn,
+} from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-import Link from "next/link"; // Adicionado o Link
-import { 
-  Building2, Factory, Cpu, Truck, HeartPulse, 
-  Wheat, ShoppingBag, Briefcase, Zap, Landmark, 
-  Sparkles, ArrowRight, Star, X, MapPin 
+import Link from "next/link";
+import {
+  ArrowRight,
+  Building2,
+  Cpu,
+  Factory,
+  Truck,
+  HeartPulse,
+  Wheat,
+  ShoppingBag,
+  Briefcase,
+  Zap,
+  Landmark,
+  Sparkles,
+  Search,
+  Crown,
+  MessageSquare,
+  FileText,
+  X,
+  Compass,
+  Plus,
 } from "lucide-react";
+import EmpresaCardFY, {
+  type EmpresaCardDados,
+} from "@/app/components/EmpresaCardFY";
+import { useFY } from "@/app/hooks/useFY";
 
-type Empresa = {
-  id: number;
-  nome: string;
-  categoria1: string;
-  tipoOferta: string;
-  avaliacao: string;
-  cidade: string;
-  estado: string;
-  descricao: string;
-  logoUrl?: string;
-  createdAt: Date;
+type EmpresaHome = EmpresaCardDados & {
+  createdAt?: Date | string;
+  status?: string;
 };
 
-const categoriasData = [
-  { nome: "Construção", icon: Building2 },
-  { nome: "Indústria", icon: Factory },
-  { nome: "Tecnologia", icon: Cpu },
-  { nome: "Logística", icon: Truck },
-  { nome: "Saúde", icon: HeartPulse },
-  { nome: "Agronegócio", icon: Wheat },
-  { nome: "Comércio", icon: ShoppingBag },
-  { nome: "Serviços", icon: Briefcase },
-  { nome: "Energia", icon: Zap },
-  { nome: "Financeiro", icon: Landmark },
+const categorias = [
+  {
+    nome: "Construção",
+    icon: Building2,
+    termos: [
+      "construcao",
+      "arquitetura",
+      "engenharia civil",
+      "obras",
+    ],
+  },
+  {
+    nome: "Indústria",
+    icon: Factory,
+    termos: [
+      "industria",
+      "usinagem",
+      "metalurgia",
+      "ferramentaria",
+      "mecanica",
+      "automacao",
+      "autopecas",
+    ],
+  },
+  {
+    nome: "Tecnologia",
+    icon: Cpu,
+    termos: [
+      "tecnologia",
+      "software",
+      "dados",
+      "informatica",
+      "seguranca da informacao",
+      "nuvem",
+      "robotica",
+    ],
+  },
+  {
+    nome: "Logística",
+    icon: Truck,
+    termos: [
+      "logistica",
+      "transporte",
+      "armazenagem",
+      "distribuicao",
+    ],
+  },
+  {
+    nome: "Saúde",
+    icon: HeartPulse,
+    termos: [
+      "saude",
+      "hospital",
+      "clinica",
+      "laboratorio",
+    ],
+  },
+  {
+    nome: "Agronegócio",
+    icon: Wheat,
+    termos: [
+      "agro",
+      "agricola",
+      "rural",
+    ],
+  },
+  {
+    nome: "Comércio",
+    icon: ShoppingBag,
+    termos: [
+      "comercio",
+      "atacado",
+      "varejo",
+      "suprimentos",
+    ],
+  },
+  {
+    nome: "Serviços",
+    icon: Briefcase,
+    termos: [
+      "servico",
+      "marketing",
+      "consultoria",
+      "limpeza",
+      "educacao",
+      "rh",
+      "recursos humanos",
+    ],
+  },
+  {
+    nome: "Energia",
+    icon: Zap,
+    termos: [
+      "energia",
+      "solar",
+      "eletric",
+    ],
+  },
+  {
+    nome: "Financeiro",
+    icon: Landmark,
+    termos: [
+      "financeiro",
+      "contabil",
+      "fiscal",
+      "tribut",
+    ],
+  },
 ];
 
-export default function HomeClient({ empresas }: { empresas: Empresa[] }) {
-  const { data: session } = useSession(); 
-  const router = useRouter(); 
-  const [categoriasAtivas, setCategoriasAtivas] = useState<string[]>([]);
-  const [showLoginModal, setShowLoginModal] = useState(false);
+function normalizar(t: string) {
+  return t
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
 
-  const toggleCategoria = (nome: string) => {
-    setCategoriasAtivas((prev) => 
-      prev.includes(nome) 
-        ? prev.filter((cat) => cat !== nome)
-        : [...prev, nome]
+export default function HomeClient({
+  empresas,
+}: {
+  empresas: EmpresaHome[];
+}) {
+  const { status } = useSession();
+  const router = useRouter();
+  const fy = useFY();
+
+  const [busca, setBusca] = useState("");
+
+  const [
+    categoriasAtivas,
+    setCategoriasAtivas,
+  ] = useState<string[]>([]);
+
+  const [
+    modalLogin,
+    setModalLogin,
+  ] = useState(false);
+
+  // Usuários logados recebem recomendações da FY.
+  // Visitantes recebem empresas do catálogo.
+  const base =
+    status === "authenticated"
+      ? fy.dados?.recomendacoes ?? []
+      : empresas.filter(
+          (e) =>
+            e.status !== "SUSPENSA" &&
+            e.status !== "EXCLUIDA"
+        );
+
+  const filtradas = useMemo(
+    () =>
+      base.filter((empresa) => {
+        if (!categoriasAtivas.length) {
+          return true;
+        }
+
+        const texto = normalizar(
+          `${empresa.categoria1} ${
+            empresa.categoria2 ?? ""
+          }`
+        );
+
+        return categoriasAtivas.some(
+          (nome) =>
+            categorias
+              .find((c) => c.nome === nome)
+              ?.termos.some(
+                (t) => texto.includes(t)
+              )
+        );
+      }),
+    [base, categoriasAtivas]
+  );
+
+  const toggle = (nome: string) => {
+    setCategoriasAtivas((lista) =>
+      lista.includes(nome)
+        ? lista.filter(
+            (x) => x !== nome
+          )
+        : [...lista, nome]
     );
   };
 
-  const empresasFiltradas = categoriasAtivas.length > 0 
-    ? empresas.filter(empresa => categoriasAtivas.includes(empresa.categoria1))
-    : empresas;
+  // Busca em todo o catálogo, com tolerância a erros.
+  const submitBusca = (
+    e: React.FormEvent
+  ) => {
+    e.preventDefault();
+
+    if (busca.trim().length > 1) {
+      router.push(
+        `/busca?q=${encodeURIComponent(
+          busca.trim()
+        )}`
+      );
+    }
+  };
 
   return (
-    <div className="p-8 lg:p-12 relative">
-      
-      {/* Hero Section */}
-      <div className="max-w-7xl mx-auto mb-16">
-        <div className="bg-gradient-to-br from-[#F4F8FF] to-white border border-gray-100 rounded-[2rem] p-10 lg:p-16 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.02)]">
-          <div className="inline-flex items-center gap-2 bg-white border border-gray-200 shadow-sm rounded-full px-4 py-1.5 mb-8">
-            <Sparkles className="text-[#1D54ED]" size={16} />
-            <span className="text-sm font-medium text-gray-600">Plataforma B2B para empresas de todos os segmentos</span>
-          </div>
-          <h1 className="text-5xl lg:text-[64px] font-extrabold text-[#0A0B10] tracking-tight mb-6 max-w-4xl leading-[1.1]">
-            O Ecossistema das Empresas.
-          </h1>
-          <p className="text-xl text-gray-500 mb-10 max-w-2xl leading-relaxed">
-            Conecte sua empresa a fornecedores, parceiros e novas oportunidades de negócio em um único lugar.
-          </p>
-          
-          <div className="flex flex-col sm:flex-row items-center gap-4">
-            <button 
-              onClick={() => {
-                if (!session) {
-                  setShowLoginModal(true);
-                } else {
-                  router.push("/nova-empresa"); 
-                }
-              }}
-              className="w-full sm:w-auto bg-[#1D54ED] hover:bg-blue-700 text-white px-8 py-3.5 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all shadow-sm"
-            >
-              Cadastrar minha empresa <ArrowRight size={18} />
-            </button>
+    <main className="min-h-screen bg-[#F5F7FB] px-4 py-6 sm:px-6 lg:px-8">
+      <div className="mx-auto grid max-w-[1550px] grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1fr)_290px]">
 
-            <button 
-              onClick={() => router.push("/empresas")}
-              className="w-full sm:w-auto bg-white hover:bg-gray-50 text-gray-800 border border-gray-200 px-8 py-3.5 rounded-xl font-semibold transition-all shadow-sm"
-            >
-              Explorar empresas
-            </button>
-          </div>
-        </div>
-      </div>
+        {/* CONTEÚDO PRINCIPAL */}
+        <div className="min-w-0 space-y-6">
 
-      {/* Secção de Categorias */}
-      <div className="max-w-7xl mx-auto mb-16">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold text-gray-900">Categorias empresariais</h2>
-          <button 
-            onClick={() => setCategoriasAtivas([])}
-            className="text-[#1D54ED] text-sm font-semibold hover:underline"
-          >
-            Ver todas
-          </button>
-        </div>
-        
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-          {categoriasData.map((cat, i) => {
-            const isAtiva = categoriasAtivas.includes(cat.nome);
-            return (
-              <button 
-                key={i} 
-                onClick={() => toggleCategoria(cat.nome)}
-                className={`p-6 rounded-2xl border transition-all duration-200 flex flex-col items-center text-center group bg-white
-                  ${isAtiva ? 'border-[#1D54ED] ring-1 ring-[#1D54ED] shadow-md' : 'border-gray-200 hover:border-blue-300 hover:shadow-sm'}
-                `}
-              >
-                <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-3 transition-colors
-                  ${isAtiva ? 'bg-[#1D54ED] text-white' : 'bg-[#F0F5FF] text-[#1D54ED] group-hover:bg-[#E5EDFF]'}
-                `}>
-                  <cat.icon size={24} strokeWidth={1.5} />
-                </div>
-                <h3 className="text-sm font-semibold text-gray-900">{cat.nome}</h3>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+          {/* HERO */}
+          <section className="relative overflow-hidden rounded-3xl border border-blue-100 bg-gradient-to-br from-white via-[#F1F6FF] to-[#E4EEFF] p-6 shadow-sm sm:p-10">
+            <div className="pointer-events-none absolute -right-12 -top-16 h-80 w-80 rounded-full border-[55px] border-white/40" />
 
-      {/* Secção Dinâmica: Empresas Recomendadas */}
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-6 flex flex-col sm:flex-row sm:items-center gap-3">
-          <h2 className="text-2xl font-bold text-gray-900">Empresas recomendadas</h2>
-          
-          {categoriasAtivas.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {categoriasAtivas.map(cat => (
-                <span key={cat} className="flex items-center gap-1 bg-blue-50 text-[#1D54ED] px-3 py-1 rounded-full text-xs font-semibold border border-blue-100">
-                  {cat}
-                  <button onClick={() => toggleCategoria(cat)} className="hover:bg-blue-200 rounded-full p-0.5 transition-colors">
-                    <X size={12} strokeWidth={3} />
-                  </button>
+            <div className="pointer-events-none absolute bottom-0 right-6 hidden rotate-[-10deg] text-[#1D54ED]/20 md:block">
+              <Building2
+                size={205}
+                strokeWidth={0.8}
+              />
+            </div>
+
+            <div className="relative z-10 max-w-[630px]">
+              <span className="inline-flex items-center gap-2 rounded-full border border-blue-100 bg-white px-3 py-1.5 text-xs font-semibold text-[#1D54ED] shadow-sm">
+                <Sparkles size={14} />
+                Ecossistema de negócios Vynco+
+              </span>
+
+              <h1 className="mt-5 text-3xl font-extrabold leading-tight tracking-tight text-[#101827] sm:text-4xl">
+                Conecte sua empresa a{" "}
+                <span className="text-[#1D54ED]">
+                  grandes oportunidades.
                 </span>
-              ))}
+              </h1>
+
+              <p className="mt-4 max-w-lg text-sm leading-relaxed text-slate-600 sm:text-base">
+                Encontre fornecedores, parceiros,
+                prestadores de serviço e novos negócios
+                em um único lugar.
+              </p>
+
+              <form
+                onSubmit={submitBusca}
+                className="mt-7 flex max-w-xl flex-col gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm sm:flex-row"
+              >
+                <div className="flex flex-1 items-center gap-2 px-3">
+                  <Search
+                    size={18}
+                    className="text-slate-400"
+                  />
+
+                  <input
+                    value={busca}
+                    onChange={(e) =>
+                      setBusca(e.target.value)
+                    }
+                    placeholder="Busque empresas, produtos ou serviços..."
+                    aria-label="Pesquisar empresas"
+                    className="min-w-0 flex-1 py-2 text-sm text-slate-800 outline-none"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="rounded-xl bg-[#1D54ED] px-5 py-3 text-sm font-bold text-white hover:bg-blue-700"
+                >
+                  Buscar
+                </button>
+              </form>
+
+              <div className="mt-5 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={() =>
+                    status === "authenticated"
+                      ? router.push("/nova-empresa")
+                      : setModalLogin(true)
+                  }
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#1D54ED] hover:underline"
+                >
+                  <Plus size={15} />
+                  Cadastrar minha empresa
+                </button>
+
+                <Link
+                  href="/empresas"
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-slate-600 hover:underline"
+                >
+                  Explorar catálogo
+                  <ArrowRight size={14} />
+                </Link>
+              </div>
             </div>
-          )}
+          </section>
+
+          {/* CATEGORIAS */}
+          <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-slate-900">
+                Categorias em destaque
+              </h2>
+
+              <button
+                onClick={() =>
+                  setCategoriasAtivas([])
+                }
+                className="text-xs font-bold text-[#1D54ED] hover:underline"
+              >
+                Limpar filtros
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+              {categorias.map((c) => {
+                const Icon = c.icon;
+
+                const ativa =
+                  categoriasAtivas.includes(
+                    c.nome
+                  );
+
+                return (
+                  <button
+                    key={c.nome}
+                    type="button"
+                    onClick={() =>
+                      toggle(c.nome)
+                    }
+                    className={`flex flex-col items-center gap-3 rounded-2xl border p-4 text-center transition-colors ${
+                      ativa
+                        ? "border-blue-500 bg-blue-50"
+                        : "border-slate-100 hover:border-blue-200 hover:bg-blue-50/40"
+                    }`}
+                  >
+                    <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-[#1D54ED]">
+                      <Icon size={21} />
+                    </span>
+
+                    <span className="text-xs font-semibold text-slate-800">
+                      {c.nome}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
+          {/* EMPRESAS RECOMENDADAS */}
+          <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+            <div className="mb-5 flex items-center justify-between gap-2">
+              <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900">
+                <Sparkles
+                  size={18}
+                  className="text-[#1D54ED]"
+                />
+                Empresas recomendadas
+              </h2>
+
+              <Link
+                href="/fy"
+                className="shrink-0 text-xs font-semibold text-[#1D54ED] hover:underline"
+              >
+                Ver todas
+              </Link>
+            </div>
+
+            {status === "authenticated" &&
+            fy.carregando ? (
+              <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
+                {[1, 2, 3, 4, 5, 6].map(
+                  (x) => (
+                    <div
+                      key={x}
+                      className="h-80 animate-pulse rounded-2xl bg-slate-100"
+                    />
+                  )
+                )}
+              </div>
+            ) : status === "authenticated" &&
+              fy.erro ? (
+              <div className="rounded-xl bg-red-50 p-7 text-sm text-red-700">
+                {fy.erro}
+
+                <button
+                  onClick={fy.atualizar}
+                  className="ml-2 font-bold underline"
+                >
+                  Tentar novamente
+                </button>
+              </div>
+            ) : status === "authenticated" &&
+              !fy.empresaId ? (
+              <div className="rounded-xl bg-blue-50 p-7 text-sm text-slate-700">
+                Selecione sua empresa no cabeçalho
+                para ver recomendações.
+              </div>
+            ) : filtradas.length ? (
+              <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
+                {filtradas
+                  .slice(0, 6)
+                  .map((empresa) => (
+                    <EmpresaCardFY
+                      key={empresa.id}
+                      empresa={empresa}
+                      compacto
+                      favorito={fy.favoritos.includes(
+                        empresa.id
+                      )}
+                      onFavorito={
+                        status === "authenticated"
+                          ? fy.alternarFavorito
+                          : undefined
+                      }
+                    />
+                  ))}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-dashed border-slate-200 p-10 text-center text-sm text-slate-500">
+                <Compass
+                  size={30}
+                  className="mx-auto mb-3 text-slate-300"
+                />
+
+                Nenhuma empresa nessa seleção.
+
+                <button
+                  onClick={() =>
+                    setCategoriasAtivas([])
+                  }
+                  className="ml-2 font-semibold text-[#1D54ED]"
+                >
+                  Limpar filtros
+                </button>
+              </div>
+            )}
+
+            <div className="mt-5 text-center">
+              <Link
+                href="/fy"
+                className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-5 py-2.5 text-sm font-semibold text-[#1D54ED] hover:bg-blue-100"
+              >
+                Ver mais empresas
+                <ArrowRight size={15} />
+              </Link>
+            </div>
+          </section>
+
+          {/* OUTRAS OPORTUNIDADES */}
+          <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+            <h2 className="mb-4 text-lg font-bold text-slate-900">
+              Explore novas oportunidades
+            </h2>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              {[
+                {
+                  nome: "Projetos",
+                  href: "/projetos",
+                  icon: Building2,
+                },
+                {
+                  nome: "Orçamentos",
+                  href: "/orcamentos",
+                  icon: FileText,
+                },
+                {
+                  nome: "Fornecedores",
+                  href: "/fornecedores",
+                  icon: Factory,
+                },
+              ].map((link) => {
+                const Icon = link.icon;
+
+                return (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className="rounded-2xl border border-slate-100 bg-slate-50 p-4 hover:bg-blue-50"
+                  >
+                    <Icon
+                      size={23}
+                      className="text-[#1D54ED]"
+                    />
+
+                    <h3 className="mt-3 text-sm font-bold">
+                      {link.nome}
+                    </h3>
+
+                    <ArrowRight
+                      size={15}
+                      className="mt-2 text-[#1D54ED]"
+                    />
+                  </Link>
+                );
+              })}
+            </div>
+          </section>
         </div>
 
-        {empresasFiltradas.length > 0 ? (
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-4">
-            {empresasFiltradas.map((empresa) => (
-              <div 
-                key={empresa.id} 
-                className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm hover:shadow-md transition-all duration-300 flex flex-col h-full"
+        {/* COLUNA DIREITA */}
+        <aside className="space-y-5">
+          <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex items-center justify-between border-b p-4">
+              <h2 className="text-sm font-bold">
+                Sugestões para você
+              </h2>
+
+              <Link
+                href="/fy"
+                className="text-xs font-semibold text-[#1D54ED]"
               >
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-3 overflow-hidden">
+                Ver todas
+              </Link>
+            </div>
+
+            {base.slice(0, 3).map(
+              (empresa) => (
+                <Link
+                  key={empresa.id}
+                  href={`/empresas/${empresa.id}`}
+                  className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 hover:bg-slate-50"
+                >
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-blue-50 text-xs font-bold text-blue-600">
                     {empresa.logoUrl ? (
-                      <img src={empresa.logoUrl} alt={empresa.nome} className="w-12 h-12 rounded-xl object-cover border border-gray-100 shrink-0" />
+                      <img
+                        src={empresa.logoUrl}
+                        alt=""
+                        className="h-full w-full object-cover"
+                      />
                     ) : (
-                      <div className="w-12 h-12 rounded-xl bg-blue-50 text-[#1D54ED] flex items-center justify-center font-bold text-lg border border-blue-100 shrink-0">
-                        {empresa.nome.charAt(0)}
-                      </div>
+                      empresa.nome
+                        .slice(0, 2)
+                        .toUpperCase()
                     )}
-                    <div className="min-w-0">
-                      <h3 className="text-base font-bold text-gray-900 truncate" title={empresa.nome}>
-                        {empresa.nome}
-                      </h3>
-                      <div className="flex items-center gap-1 text-xs text-gray-500 mt-0.5 truncate">
-                        <MapPin size={12} className="shrink-0" />
-                        <span className="truncate">{empresa.cidade}, {empresa.estado}</span>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center gap-1 px-2 py-1 bg-amber-50 text-amber-600 rounded-lg text-xs font-bold border border-amber-100 shrink-0 ml-2">
-                    <Star size={12} className="fill-amber-500" />
-                    {empresa.avaliacao || "Novo"}
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap gap-2 mb-3">
-                  <span className="px-2 py-1 bg-gray-50 text-gray-600 text-[10px] font-semibold uppercase tracking-wider rounded border border-gray-200">
-                    {empresa.categoria1}
                   </span>
-                  <span className="px-2 py-1 bg-blue-50 text-[#1D54ED] text-[10px] font-semibold uppercase tracking-wider rounded border border-blue-100">
-                    {empresa.tipoOferta}
+
+                  <span className="min-w-0 flex-1">
+                    <strong className="block truncate text-xs">
+                      {empresa.nome}
+                    </strong>
+
+                    <small className="block truncate text-slate-500">
+                      {empresa.categoria1}
+                    </small>
                   </span>
-                </div>
 
-                <p className="text-sm text-gray-600 line-clamp-2 mb-5 flex-1">
-                  {empresa.descricao}
-                </p>
+                  <ArrowRight
+                    size={14}
+                    className="text-blue-600"
+                  />
+                </Link>
+              )
+            )}
 
-                <div className="pt-4 border-t border-gray-50 mt-auto">
-                  <Link 
-                    href={`/empresas/${empresa.id}`}
-                    className="w-full py-2 bg-gray-50 hover:bg-[#1D54ED] text-gray-700 hover:text-white rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2 group"
-                  >
-                    Ver Empresa
-                    <ArrowRight size={16} className="text-gray-400 group-hover:text-white transition-colors" />
-                  </Link>
-                </div>
-              </div>
-            ))}
-          </div>
+            {!base.length && (
+              <p className="p-4 text-xs text-slate-400">
+                Sem sugestões por enquanto.
+              </p>
+            )}
+          </section>
 
-        ) : (
-          <div className="text-center py-12 bg-white rounded-2xl border border-gray-200 border-dashed">
-            <p className="text-gray-500 font-medium">Nenhuma empresa encontrada para estas categorias.</p>
-            <button onClick={() => setCategoriasAtivas([])} className="mt-4 text-[#1D54ED] text-sm font-semibold hover:underline">
-              Limpar todos os filtros
-            </button>
-          </div>
-        )}
+          <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h2 className="mb-3 text-sm font-bold">
+              Acessos rápidos
+            </h2>
+
+            {[
+              {
+                href: "/mensagens",
+                label: "Mensagens",
+                icon: MessageSquare,
+              },
+              {
+                href: "/orcamentos",
+                label: "Orçamentos",
+                icon: FileText,
+              },
+              {
+                href: "/empresas",
+                label: "Todas as empresas",
+                icon: Building2,
+              },
+            ].map((link) => {
+              const Icon = link.icon;
+
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className="flex items-center gap-3 rounded-xl p-3 text-sm text-slate-700 hover:bg-blue-50"
+                >
+                  <Icon
+                    size={17}
+                    className="text-[#1D54ED]"
+                  />
+
+                  {link.label}
+
+                  <ArrowRight
+                    size={14}
+                    className="ml-auto text-slate-400"
+                  />
+                </Link>
+              );
+            })}
+          </section>
+
+          <section className="rounded-3xl bg-gradient-to-br from-[#0D2145] to-[#061329] p-6 text-white shadow-lg">
+            <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-white/10">
+              <Crown
+                size={27}
+                className="text-amber-300"
+              />
+            </div>
+
+            <h2 className="text-xl font-extrabold text-amber-300">
+              Vynco+ Premium
+            </h2>
+
+            <p className="mt-3 text-sm leading-relaxed text-blue-100">
+              Mais visibilidade para sua empresa
+              e novas oportunidades de negócio.
+            </p>
+
+            <div className="mt-6 rounded-xl border border-white/15 bg-white/10 p-3 text-center text-xs font-semibold">
+              Mais funcionalidades em desenvolvimento
+            </div>
+          </section>
+        </aside>
       </div>
 
-      {showLoginModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl p-8 sm:p-10 relative">
-            
+      {/* MODAL DE LOGIN */}
+      {modalLogin && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="relative w-full max-w-md rounded-3xl bg-white p-8 shadow-xl">
             <button
-              onClick={() => setShowLoginModal(false)}
-              className="absolute top-5 right-5 text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
+              onClick={() =>
+                setModalLogin(false)
+              }
+              aria-label="Fechar"
+              className="absolute right-5 top-5"
             >
-              <X size={24} />
+              <X size={20} />
             </button>
 
-            <div className="flex justify-center mb-6">
-               <div className="bg-[#1D54ED] text-white p-3 rounded-2xl">
-                 <Sparkles size={28} />
-               </div>
-            </div>
-            <h2 className="text-3xl font-bold text-center text-gray-900 mb-2">
-              Entrar na Vynco
+            <h2 className="mb-2 text-center text-2xl font-bold">
+              Entre na Vynco+
             </h2>
-            <p className="text-center text-gray-500 mb-8 text-sm">
-              Registre a sua empresa e descubra novas oportunidades.
+
+            <p className="mb-6 text-center text-sm text-slate-500">
+              Faça login para cadastrar sua empresa.
             </p>
 
             <button
-              onClick={() => signIn("google")}
-              className="w-full flex items-center justify-center gap-3 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-6 py-3.5 rounded-full font-semibold transition-all mb-6 cursor-pointer"
+              onClick={() =>
+                signIn("google")
+              }
+              className="w-full rounded-xl border border-slate-200 p-3 font-semibold hover:bg-slate-50"
             >
-              <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-              </svg>
               Continuar com o Google
             </button>
-
-            <div className="flex items-center gap-4 mb-6">
-              <div className="flex-1 h-px bg-gray-200"></div>
-              <span className="text-sm text-gray-400 font-medium">ou</span>
-              <div className="flex-1 h-px bg-gray-200"></div>
-            </div>
-
-            <div className="space-y-4">
-              <input
-                type="text"
-                placeholder="E-mail ou nome de usuário"
-                className="w-full px-5 py-3.5 rounded-xl border border-gray-300 text-gray-900 placeholder-gray-400 focus:outline-none focus:border-[#1D54ED] focus:ring-1 focus:ring-[#1D54ED] transition-all"
-              />
-              <button
-                onClick={() => alert("O login por e-mail será ativado na próxima fase! Por favor, utilize a opção do Google acima.")}
-                className="w-full bg-[#0A0B10] hover:bg-gray-800 text-white px-6 py-3.5 rounded-full font-semibold transition-all shadow-sm cursor-pointer"
-              >
-                Continuar
-              </button>
-            </div>
-
-            <p className="text-xs text-center text-gray-500 mt-8 leading-relaxed">
-              Ao continuar, você concorda com os nossos <a href="#" className="text-[#1D54ED] hover:underline">Termos de Serviço</a>, <a href="#" className="text-[#1D54ED] hover:underline">Política de Privacidade</a> e <a href="#" className="text-[#1D54ED] hover:underline">Uso de cookies</a>.
-            </p>
           </div>
         </div>
       )}
-
-    </div>
+    </main>
   );
 }

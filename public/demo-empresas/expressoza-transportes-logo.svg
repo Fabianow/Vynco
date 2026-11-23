@@ -1,0 +1,8 @@
+
+    <svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240">
+      <rect width="240" height="240" rx="40" fill="#087F78"/>
+      <circle cx="204" cy="29" r="98" fill="#7FD6C9" opacity=".27"/>
+      <path d="M-20 210 L210 -20" stroke="white" stroke-width="13" opacity=".08"/>
+      <text x="120" y="146" fill="white" text-anchor="middle"
+        font-family="Arial,sans-serif" font-size="87" font-weight="700">ET</text>
+    </svg>

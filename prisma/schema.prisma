@@ -7,35 +7,42 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Modelos do NextAuth (Usuários e Login)
 model User {
   id            String    @id @default(cuid())
   name          String?
   email         String?   @unique
   emailVerified DateTime?
   image         String?
-  password      String?   // Para quem logar com email e senha
-  accounts      Account[]
-  sessions      Session[]
-  empresas      Empresa[] // Um utilizador pode ser dono de várias empresas
+  password      String?
+
+  role UserRole @default(USER)
+
+  accounts  Account[]
+  sessions  Session[]
+  empresas  Empresa[]
+  logsAdmin LogAdministrativo[]
+
+  @@map("user")
 }
 
 model Account {
-  id                 String  @id @default(cuid())
-  userId             String
-  type               String
-  provider           String
-  providerAccountId  String
-  refresh_token      String?  @db.Text
-  access_token       String?  @db.Text
-  expires_at         Int?
-  token_type         String?
-  scope              String?
-  id_token           String?  @db.Text
-  session_state      String?
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@unique([provider, providerAccountId])
+  @@map("account")
 }
 
 model Session {
@@ -43,51 +50,89 @@ model Session {
   sessionToken String   @unique
   userId       String
   expires      DateTime
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("session")
 }
 
-// Tabela empresa
 model Empresa {
-  id              Int      @id @default(autoincrement())
-  nome            String
-  cnpj            String   @unique
-  responsavel     String   // Nome do responsável comercial
-  email           String   // E-mail comercial
-  telefone        String
-  
-  categoria1      String   // Segmento principal
-  categoria2      String?  // Segmento secundário (Opcional)
-  tipoOferta      String   // Produto, Serviço ou Ambos
-  
-  cidade          String
-  estado          String   // UF
-  porte           String
-  site            String?
-  logoUrl         String?
-  bannerUrl       String?
-  descricao       String   @db.Text
-  
-  avaliacao       String   @default("Novo")
-  createdAt       DateTime @default(now())
-  
-  donoId          String?
-  dono            User?    @relation(fields: [donoId], references: [id])
+  id   Int     @id @default(autoincrement())
+  nome String
+  cnpj String? @unique
 
-  // Relações B2B para o Chat:
+  isDemo Boolean       @default(false)
+  status EmpresaStatus @default(ATIVA)
+  plano  PlanoEmpresa  @default(FREE)
+
+  responsavel String
+  email       String
+  telefone    String
+
+  categoria1 String
+  categoria2 String?
+  tipoOferta String
+
+  cidade String
+  estado String
+  porte  String
+
+  site      String?
+  logoUrl   String?
+  bannerUrl String?
+  descricao String  @db.Text
+
+  avaliacao String   @default("Novo")
+  createdAt DateTime @default(now())
+
+  donoId String?
+  dono   User?   @relation(fields: [donoId], references: [id])
+
   mensagensEnviadas  Mensagem[] @relation("MensagensEnviadas")
   mensagensRecebidas Mensagem[] @relation("MensagensRecebidas")
+
+  @@map("empresa")
 }
 
 model Mensagem {
-  id               Int      @id @default(autoincrement())
-  texto            String   @db.Text
-  createdAt        DateTime @default(now())
+  id        Int      @id @default(autoincrement())
+  texto     String   @db.Text
+  createdAt DateTime @default(now())
 
-  // Quem envia a mensagem (Empresa do Fabiano, por exemplo)
   remetenteId      Int
-  empresaRemetente Empresa  @relation("MensagensEnviadas", fields: [remetenteId], references: [id], onDelete: Cascade)
+  empresaRemetente Empresa @relation("MensagensEnviadas", fields: [remetenteId], references: [id], onDelete: Cascade)
 
-  // Quem recebe a mensagem (A empresa com quem queres falar)
-  destinatarioId   Int
+  destinatarioId      Int
   empresaDestinatario Empresa @relation("MensagensRecebidas", fields: [destinatarioId], references: [id], onDelete: Cascade)
+
+  @@map("mensagem")
+}
+
+enum UserRole {
+  USER
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum EmpresaStatus {
+  ATIVA
+  SUSPENSA
+  EXCLUIDA
+}
+
+enum PlanoEmpresa {
+  FREE
+  PREMIUM
+}
+
+model LogAdministrativo {
+  id        Int      @id @default(autoincrement())
+  adminId   String
+  admin     User     @relation(fields: [adminId], references: [id])
+  acao      String
+  empresaId Int?
+  detalhes  String?  @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([adminId, createdAt])
 }

@@ -1,0 +1,22 @@
+ALTER TABLE `empresa`
+  ADD COLUMN `isDemo` BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN `plano` ENUM('FREE', 'PREMIUM') NOT NULL DEFAULT 'FREE',
+  ADD COLUMN `status` ENUM('ATIVA', 'SUSPENSA', 'EXCLUIDA') NOT NULL DEFAULT 'ATIVA',
+  MODIFY COLUMN `cnpj` VARCHAR(191) NULL;
+
+ALTER TABLE `user`
+  ADD COLUMN `role` ENUM('USER', 'ADMIN', 'SUPER_ADMIN') NOT NULL DEFAULT 'USER';
+
+CREATE TABLE `LogAdministrativo` (
+  `id` INTEGER NOT NULL AUTO_INCREMENT,
+  `adminId` VARCHAR(191) NOT NULL,
+  `acao` VARCHAR(191) NOT NULL,
+  `empresaId` INTEGER NULL,
+  `detalhes` TEXT NULL,
+  `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  INDEX `LogAdministrativo_adminId_createdAt_idx` (`adminId`, `createdAt`),
+  PRIMARY KEY (`id`),
+  CONSTRAINT `LogAdministrativo_adminId_fkey`
+    FOREIGN KEY (`adminId`) REFERENCES `user`(`id`)
+    ON DELETE RESTRICT ON UPDATE CASCADE
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
